@@ -1,7 +1,7 @@
 # Flutter mobile migration design
 
 Date: 2026-09-20
-Status: Written specification for user review; implementation has not started.
+Status: User approved the written design on 2026-09-20; implementation plan awaits review.
 
 ## Intent and baseline
 
@@ -123,7 +123,10 @@ credentials to the intended origin; reject credential forwarding on redirects or
 address edits. Keep API keys server-side. Validate QR and login callbacks, cancel
 late results after backgrounding or a connection generation change.
 
-Preserve explicit reconnect behavior. Permission denial, native start failure,
+Preserve source recovery behavior: eligible transport failures retry after 1, 2 and 4
+seconds; refusal codes 4003/4006/4009 do not retry. Reset the retry budget only after
+30 seconds of stable readiness. Transport recovery never reopens the microphone
+automatically; explicit user action is required to resume voice. Permission denial, native start failure,
 SDK timeout, network loss and malformed protocol data release resources and leave
 consistent UI state. Errors must be user-readable and must not expose credentials.
 Only the existing pairing flow uses the camera; no camera streaming is introduced.
