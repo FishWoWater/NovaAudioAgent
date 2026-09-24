@@ -1,0 +1,70 @@
+name: Validate PR review exit fix
+on:
+  push:
+    branches: [feature/pr-review-exit-validation]
+permissions:
+  contents: read
+jobs:
+  review:
+    if: github.repository == 'FishWoWater/NovaAudioAgent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [pr12-first, pr12-repeat, pr24]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Fetch public review objects and prepare trusted prompt
+        env:
+          SAMPLE: ${{ matrix.sample }}
+        run: |
+          if [ "$SAMPLE" = pr24 ]; then
+            head=ef0890acc13d7bada980cc2c2ce41ca351e7b2d0
+            base=5d87d49cf29acdaaa57be0da7ba8f117836f28c5
+            number=24
+          else
+            head=d4641260cf9f775c5ba6016e41679df6891586d3
+            base=9e1c72574bc7eb038099cd02b02b9c3f6a81c293
+            number=12
+          fi
+          git -c core.hooksPath=/dev/null fetch --no-tags https://github.com/deepnovacore/NovaAudioAgent.git "$base" "$head"
+          mkdir -p "$RUNNER_TEMP/nova-review-codex"
+          cp .github/codex/config.toml "$RUNNER_TEMP/nova-review-codex/config.toml"
+          {
+            cat .github/codex/review.md
+            printf '\nPR number: %s\nBASE_SHA: %s\nHEAD_SHA: %s\nRepository: deepnovacore/NovaAudioAgent\n' "$number" "$base" "$head"
+          } > "$RUNNER_TEMP/nova-review-prompt.md"
+      - name: Review using patched action and unchanged CLI/model/security
+        id: codex
+        timeout-minutes: 10
+        uses: openai/codex-action@f93255fd2e5a17a0b4bd557599535e80c8607537
+        with:
+          codex-version: '0.156.1'
+          openai-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          responses-api-endpoint: https://openrouter.ai/api/v1/responses
+          model: qwen/qwen3.8-flash
+          effort: medium
+          safety-strategy: drop-sudo
+          permission-profile: ':read-only'
+          codex-home: ${{ runner.temp }}/nova-review-codex
+          prompt-file: ${{ runner.temp }}/nova-review-prompt.md
+          output-file: ${{ runner.temp }}/nova-review-output.md
+          codex-args: '["--ephemeral"]'
+      - name: Verify output is exported and later steps run
+        env:
+          REVIEW_MESSAGE: ${{ steps.codex.outputs.final-message }}
+        run: |
+          node - <<'JS'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const output = fs.readFileSync(`${process.env.RUNNER_TEMP}/nova-review-output.md`, 'utf8');
+          assert.ok(output.trim());
+          assert.equal(process.env.REVIEW_MESSAGE, output);
+          assert.ok(Buffer.byteLength(output) <= 48000);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Action exited successfully and exported ${Buffer.byteLength(output)} bytes.\n\n${output}`);
+          console.log(`Verified final-message matches result file (${Buffer.byteLength(output)} bytes); subsequent step reached.`);
+          JS
