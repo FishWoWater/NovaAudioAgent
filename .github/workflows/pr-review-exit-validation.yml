@@ -42,9 +42,9 @@ jobs:
         run: |
           sudo useradd --create-home --user-group --shell /bin/bash nova-review
           sudo chmod 755 /home/nova-review
-          sudo chown -R nova-review:nova-review "$RUNNER_TEMP/nova-review-codex"
           touch "$RUNNER_TEMP/nova-review-codex/$GITHUB_RUN_ID.json"
           chmod 666 "$RUNNER_TEMP/nova-review-codex/$GITHUB_RUN_ID.json"
+          sudo chown -R nova-review:nova-review "$RUNNER_TEMP/nova-review-codex"
           chmod -R a+rX "$GITHUB_WORKSPACE"
           chmod a+x "$RUNNER_TEMP"
           if sudo -u nova-review sudo -n true 2>/dev/null; then exit 1; fi
