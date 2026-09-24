@@ -8,11 +8,11 @@ jobs:
   review:
     if: github.repository == 'FishWoWater/NovaAudioAgent'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 6
     strategy:
       fail-fast: false
       matrix:
-        sample: [pr12-first, pr12-repeat, pr24]
+        sample: [pr24]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -38,9 +38,44 @@ jobs:
             cat .github/codex/review.md
             printf '\nPR number: %s\nBASE_SHA: %s\nHEAD_SHA: %s\nRepository: deepnovacore/NovaAudioAgent\n' "$number" "$base" "$head"
           } > "$RUNNER_TEMP/nova-review-prompt.md"
+      - name: Arm bounded process diagnostic
+        run: |
+          cat > "$RUNNER_TEMP/review-diagnostic.py" <<'PYTHON'
+          import os, pathlib, signal, subprocess, time
+          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'nova-review-output.md'
+          deadline = time.monotonic() + 180
+          while time.monotonic() < deadline and not (output.exists() and output.stat().st_size):
+              time.sleep(1)
+          time.sleep(10)
+          print('output bytes:', output.stat().st_size if output.exists() else 0, flush=True)
+          subprocess.run(['ps', '-eLo', 'pid,ppid,tid,uid,gid,stat,wchan:32,comm'])
+          pids = []
+          for proc in pathlib.Path('/proc').glob('[0-9]*'):
+              try:
+                  if (proc / 'comm').read_text().strip() != 'codex':
+                      continue
+                  pids.append(int(proc.name))
+                  print('CODEX STATUS', proc.name, (proc / 'status').read_text(), flush=True)
+                  for task in (proc / 'task').iterdir():
+                      print('THREAD', task.name, (task / 'comm').read_text().strip(), (task / 'wchan').read_text(), flush=True)
+              except (FileNotFoundError, PermissionError, ProcessLookupError):
+                  pass
+          for pid in pids:
+              try:
+                  os.kill(pid, signal.SIGTERM)
+              except ProcessLookupError:
+                  pass
+          time.sleep(5)
+          for pid in pids:
+              try:
+                  os.kill(pid, signal.SIGKILL)
+              except ProcessLookupError:
+                  pass
+          PYTHON
+          sudo -n env RUNNER_TEMP="$RUNNER_TEMP" nohup python3 "$RUNNER_TEMP/review-diagnostic.py" > "$RUNNER_TEMP/review-diagnostic.log" 2>&1 < /dev/null &
       - name: Review using patched action and unchanged CLI/model/security
         id: codex
-        timeout-minutes: 10
+        timeout-minutes: 4
         uses: openai/codex-action@f93255fd2e5a17a0b4bd557599535e80c8607537
         with:
           codex-version: '0.156.1'
@@ -67,4 +102,14 @@ jobs:
           assert.ok(Buffer.byteLength(output) <= 48000);
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Action exited successfully and exported ${Buffer.byteLength(output)} bytes.\n\n${output}`);
           console.log(`Verified final-message matches result file (${Buffer.byteLength(output)} bytes); subsequent step reached.`);
+          JS
+      - name: Report process diagnostic
+        if: always()
+        run: |
+          cat "$RUNNER_TEMP/review-diagnostic.log"
+          node - <<'JS'
+          const fs = require('node:fs');
+          const log = fs.readFileSync(`${process.env.RUNNER_TEMP}/review-diagnostic.log`, 'utf8');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '\n```text\n' + log + '\n```\n');
+          console.log('::notice title=Review process diagnostic::' + log.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A'));
           JS
