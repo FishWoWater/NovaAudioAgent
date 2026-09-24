@@ -53,6 +53,41 @@ jobs:
           sudo -u nova-review test -r "$GITHUB_WORKSPACE/.git/HEAD"
           sudo -u nova-review git config --global --add safe.directory "$GITHUB_WORKSPACE"
           if sudo -u nova-review sudo -n true 2>/dev/null; then exit 1; fi
+      - name: Arm bounded process diagnostic
+        run: |
+          cat > "$RUNNER_TEMP/review-diagnostic.py" <<'PYTHON'
+          import os, pathlib, signal, subprocess, time
+          output = pathlib.Path('/home/nova-review/.codex/output.md')
+          deadline = time.monotonic() + 180
+          while time.monotonic() < deadline and not (output.exists() and output.stat().st_size):
+              time.sleep(1)
+          time.sleep(10)
+          print('output bytes:', output.stat().st_size if output.exists() else 0, flush=True)
+          subprocess.run(['ps', '-eLo', 'pid,ppid,tid,uid,gid,stat,wchan:32,comm'])
+          pids = []
+          for proc in pathlib.Path('/proc').glob('[0-9]*'):
+              try:
+                  if (proc / 'comm').read_text().strip() != 'codex' and b'run-codex-exec' not in (proc / 'cmdline').read_bytes():
+                      continue
+                  pids.append(int(proc.name))
+                  print('CODEX STATUS', proc.name, (proc / 'status').read_text(), flush=True)
+                  for task in (proc / 'task').iterdir():
+                      print('THREAD', task.name, (task / 'comm').read_text().strip(), (task / 'wchan').read_text(), flush=True)
+              except (FileNotFoundError, PermissionError, ProcessLookupError):
+                  pass
+          for pid in pids:
+              try:
+                  os.kill(pid, signal.SIGTERM)
+              except ProcessLookupError:
+                  pass
+          time.sleep(5)
+          for pid in pids:
+              try:
+                  os.kill(pid, signal.SIGKILL)
+              except ProcessLookupError:
+                  pass
+          PYTHON
+          sudo -n env RUNNER_TEMP="$RUNNER_TEMP" nohup python3 "$RUNNER_TEMP/review-diagnostic.py" > "$RUNNER_TEMP/review-diagnostic.log" 2>&1 < /dev/null &
       - name: Review using patched action and isolated review user
         id: codex
         timeout-minutes: 4
@@ -83,4 +118,14 @@ jobs:
           assert.ok(Buffer.byteLength(output) <= 48000);
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Action exited successfully and exported ${Buffer.byteLength(output)} bytes.\n\n${output}`);
           console.log(`Verified final-message matches result file (${Buffer.byteLength(output)} bytes); subsequent step reached.`);
+          JS
+      - name: Report process diagnostic
+        if: always()
+        run: |
+          cat "$RUNNER_TEMP/review-diagnostic.log"
+          node - <<'JS'
+          const fs = require('node:fs');
+          const log = fs.readFileSync(`${process.env.RUNNER_TEMP}/review-diagnostic.log`, 'utf8');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '\n```text\n' + log + '\n```\n');
+          console.log('::notice title=Review process diagnostic::' + log.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A'));
           JS
