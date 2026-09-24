@@ -8,11 +8,11 @@ jobs:
   review:
     if: github.repository == 'FishWoWater/NovaAudioAgent'
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        sample: [pr24]
+        sample: [pr12-first, pr12-repeat, pr24]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -32,65 +32,32 @@ jobs:
             number=12
           fi
           git -c core.hooksPath=/dev/null fetch --no-tags https://github.com/deepnovacore/NovaAudioAgent.git "$base" "$head"
-          mkdir -p "$RUNNER_TEMP/nova-review-codex"
-          cp .github/codex/config.toml "$RUNNER_TEMP/nova-review-codex/config.toml"
           {
             cat .github/codex/review.md
             printf '\nPR number: %s\nBASE_SHA: %s\nHEAD_SHA: %s\nRepository: deepnovacore/NovaAudioAgent\n' "$number" "$base" "$head"
           } > "$RUNNER_TEMP/nova-review-prompt.md"
-      - name: Create isolated review user without changing host services
+      - name: Prepare an isolated review user without changing runner services
         run: |
           sudo useradd --create-home --user-group --shell /bin/bash nova-review
           sudo chmod 755 /home/nova-review
           sudo install -d -o nova-review -g nova-review -m 755 /home/nova-review/.codex
           sudo install -o root -g root -m 644 .github/codex/config.toml /home/nova-review/.codex/config.toml
+          # The proxy starts as runner; the action locks this file before Codex starts.
           sudo touch "/home/nova-review/.codex/$GITHUB_RUN_ID.json"
           sudo chmod 666 "/home/nova-review/.codex/$GITHUB_RUN_ID.json"
+          # Only the public checkout is shared; ancestor directories need traversal only.
           chmod -R a+rX "$GITHUB_WORKSPACE"
-          chmod a+x "$RUNNER_TEMP"
           chmod o+x /home/runner "$GITHUB_WORKSPACE/.." "$GITHUB_WORKSPACE/../.."
-          namei -l "$GITHUB_WORKSPACE"
-          sudo -u nova-review test -r "$GITHUB_WORKSPACE/.git/HEAD"
           sudo -u nova-review git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          if sudo -u nova-review sudo -n true 2>/dev/null; then exit 1; fi
-      - name: Arm bounded process diagnostic
-        run: |
-          cat > "$RUNNER_TEMP/review-diagnostic.py" <<'PYTHON'
-          import os, pathlib, signal, subprocess, time
-          output = pathlib.Path('/home/nova-review/.codex/output.md')
-          deadline = time.monotonic() + 180
-          while time.monotonic() < deadline and not (output.exists() and output.stat().st_size):
-              time.sleep(1)
-          time.sleep(10)
-          print('output bytes:', output.stat().st_size if output.exists() else 0, flush=True)
-          subprocess.run(['ps', '-eLo', 'pid,ppid,tid,uid,gid,stat,wchan:32,comm'])
-          pids = []
-          for proc in pathlib.Path('/proc').glob('[0-9]*'):
-              try:
-                  if (proc / 'comm').read_text().strip() != 'codex' and b'run-codex-exec' not in (proc / 'cmdline').read_bytes():
-                      continue
-                  pids.append(int(proc.name))
-                  print('CODEX STATUS', proc.name, (proc / 'status').read_text(), flush=True)
-                  for task in (proc / 'task').iterdir():
-                      print('THREAD', task.name, (task / 'comm').read_text().strip(), (task / 'wchan').read_text(), flush=True)
-              except (FileNotFoundError, PermissionError, ProcessLookupError):
-                  pass
-          for pid in pids:
-              try:
-                  os.kill(pid, signal.SIGTERM)
-              except ProcessLookupError:
-                  pass
-          time.sleep(5)
-          for pid in pids:
-              try:
-                  os.kill(pid, signal.SIGKILL)
-              except ProcessLookupError:
-                  pass
-          PYTHON
-          sudo -n env RUNNER_TEMP="$RUNNER_TEMP" nohup python3 "$RUNNER_TEMP/review-diagnostic.py" > "$RUNNER_TEMP/review-diagnostic.log" 2>&1 < /dev/null &
+          test "$(id -Gn nova-review)" = nova-review
+          sudo -u nova-review test -r "$GITHUB_WORKSPACE/.git/HEAD"
+          if sudo -u nova-review sudo -n true 2>/dev/null || sudo -u nova-review test -w "$GITHUB_WORKSPACE"; then
+            echo 'Review user must have neither sudo nor checkout write access.' >&2
+            exit 1
+          fi
       - name: Review using patched action and isolated review user
         id: codex
-        timeout-minutes: 4
+        timeout-minutes: 15
         uses: openai/codex-action@f93255fd2e5a17a0b4bd557599535e80c8607537
         with:
           codex-version: '0.156.1'
@@ -103,7 +70,6 @@ jobs:
           permission-profile: ':read-only'
           codex-home: /home/nova-review/.codex
           prompt-file: ${{ runner.temp }}/nova-review-prompt.md
-          output-file: /home/nova-review/.codex/output.md
           codex-args: '["--ephemeral"]'
       - name: Verify output is exported and later steps run
         env:
@@ -112,20 +78,9 @@ jobs:
           node - <<'JS'
           const assert = require('node:assert/strict');
           const fs = require('node:fs');
-          const output = fs.readFileSync('/home/nova-review/.codex/output.md', 'utf8');
+          const output = process.env.REVIEW_MESSAGE;
           assert.ok(output.trim());
-          assert.equal(process.env.REVIEW_MESSAGE, output);
           assert.ok(Buffer.byteLength(output) <= 48000);
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Action exited successfully and exported ${Buffer.byteLength(output)} bytes.\n\n${output}`);
-          console.log(`Verified final-message matches result file (${Buffer.byteLength(output)} bytes); subsequent step reached.`);
-          JS
-      - name: Report process diagnostic
-        if: always()
-        run: |
-          cat "$RUNNER_TEMP/review-diagnostic.log"
-          node - <<'JS'
-          const fs = require('node:fs');
-          const log = fs.readFileSync(`${process.env.RUNNER_TEMP}/review-diagnostic.log`, 'utf8');
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '\n```text\n' + log + '\n```\n');
-          console.log('::notice title=Review process diagnostic::' + log.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A'));
+          console.log(`Verified default-path final-message (${Buffer.byteLength(output)} bytes); subsequent step reached.`);
           JS
