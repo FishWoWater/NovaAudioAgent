@@ -46,9 +46,12 @@ jobs:
           sudo install -o root -g root -m 644 .github/codex/config.toml /home/nova-review/.codex/config.toml
           sudo touch "/home/nova-review/.codex/$GITHUB_RUN_ID.json"
           sudo chmod 666 "/home/nova-review/.codex/$GITHUB_RUN_ID.json"
-          sudo -u nova-review git config --global --add safe.directory "$GITHUB_WORKSPACE"
           chmod -R a+rX "$GITHUB_WORKSPACE"
           chmod a+x "$RUNNER_TEMP"
+          chmod o+x /home/runner "$GITHUB_WORKSPACE/.." "$GITHUB_WORKSPACE/../.."
+          namei -l "$GITHUB_WORKSPACE"
+          sudo -u nova-review test -r "$GITHUB_WORKSPACE/.git/HEAD"
+          sudo -u nova-review git config --global --add safe.directory "$GITHUB_WORKSPACE"
           if sudo -u nova-review sudo -n true 2>/dev/null; then exit 1; fi
       - name: Review using patched action and isolated review user
         id: codex
