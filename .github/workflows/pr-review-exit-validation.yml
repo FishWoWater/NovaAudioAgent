@@ -42,9 +42,11 @@ jobs:
         run: |
           sudo useradd --create-home --user-group --shell /bin/bash nova-review
           sudo chmod 755 /home/nova-review
-          touch "$RUNNER_TEMP/nova-review-codex/$GITHUB_RUN_ID.json"
-          chmod 666 "$RUNNER_TEMP/nova-review-codex/$GITHUB_RUN_ID.json"
-          sudo chown -R nova-review:nova-review "$RUNNER_TEMP/nova-review-codex"
+          sudo install -d -o nova-review -g nova-review -m 755 /home/nova-review/.codex
+          sudo install -o root -g root -m 644 .github/codex/config.toml /home/nova-review/.codex/config.toml
+          sudo touch "/home/nova-review/.codex/$GITHUB_RUN_ID.json"
+          sudo chmod 666 "/home/nova-review/.codex/$GITHUB_RUN_ID.json"
+          sudo -u nova-review git config --global --add safe.directory "$GITHUB_WORKSPACE"
           chmod -R a+rX "$GITHUB_WORKSPACE"
           chmod a+x "$RUNNER_TEMP"
           if sudo -u nova-review sudo -n true 2>/dev/null; then exit 1; fi
@@ -61,9 +63,9 @@ jobs:
           safety-strategy: unprivileged-user
           codex-user: nova-review
           permission-profile: ':read-only'
-          codex-home: ${{ runner.temp }}/nova-review-codex
+          codex-home: /home/nova-review/.codex
           prompt-file: ${{ runner.temp }}/nova-review-prompt.md
-          output-file: ${{ runner.temp }}/nova-review-codex/output.md
+          output-file: /home/nova-review/.codex/output.md
           codex-args: '["--ephemeral"]'
       - name: Verify output is exported and later steps run
         env:
@@ -72,7 +74,7 @@ jobs:
           node - <<'JS'
           const assert = require('node:assert/strict');
           const fs = require('node:fs');
-          const output = fs.readFileSync(`${process.env.RUNNER_TEMP}/nova-review-codex/output.md`, 'utf8');
+          const output = fs.readFileSync('/home/nova-review/.codex/output.md', 'utf8');
           assert.ok(output.trim());
           assert.equal(process.env.REVIEW_MESSAGE, output);
           assert.ok(Buffer.byteLength(output) <= 48000);
