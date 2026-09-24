@@ -1,4 +1,4 @@
-name: Publish release
+name: Verify published release
 
 on:
   workflow_dispatch:
@@ -17,134 +17,10 @@ on:
         type: string
 
 permissions:
-  actions: read
-  contents: write
-
-concurrency:
-  group: publish-release-${{ inputs.release_version }}
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: npm-release
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.commit }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          registry-url: https://registry.npmjs.org
-      - run: npm install --global npm@11.6.0
-      - name: Verify candidate identity, platform builds, version, and release authority
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
-          EXPECTED_COMMIT: ${{ inputs.commit }}
-          RELEASE_VERSION: ${{ inputs.release_version }}
-        run: |
-          set -euo pipefail
-          node clients/desktop/scripts/check-release-version.mjs
-          test "$EXPECTED_COMMIT" = "$(git rev-parse HEAD)"
-          git merge-base --is-ancestor "$EXPECTED_COMMIT" origin/main
-          gh run view "$CANDIDATE_RUN_ID" --json headSha,jobs,name,status,conclusion,event,url > candidate-run.json
-          test "$(jq -r .name candidate-run.json)" = "Release candidate evidence"
-          test "$(jq -r .status candidate-run.json)" = "completed"
-          test "$(jq -r .conclusion candidate-run.json)" = "success"
-          test "$(jq -r .event candidate-run.json)" = "workflow_dispatch"
-          test "$(jq -r .headSha candidate-run.json)" = "$EXPECTED_COMMIT"
-          test "$(jq '[.jobs[] | select(.name | startswith("platform-candidate (macos-14, darwin, darwin-arm64")) | select(.conclusion == "success")] | length' candidate-run.json)" = "1"
-          test "$(jq '[.jobs[] | select(.name | startswith("platform-candidate (windows-latest, win32, win32-x64")) | select(.conclusion == "success")] | length' candidate-run.json)" = "1"
-          test "$(jq '[.jobs[] | select(.name | startswith("platform-candidate (ubuntu-22.04, linux, linux-x64")) | select(.conclusion == "success")] | length' candidate-run.json)" = "1"
-          npm whoami
-          if npm view "nova-audio-agent@$RELEASE_VERSION" version > existing-version.txt 2> npm-view-error.txt; then
-            echo "nova-audio-agent@$RELEASE_VERSION already exists" >&2
-            exit 1
-          fi
-          grep -q 'E404' npm-view-error.txt
-          if npm view "nova-audio-agent-server@$RELEASE_VERSION" version > existing-server-version.txt 2> npm-server-view-error.txt; then
-            echo "nova-audio-agent-server@$RELEASE_VERSION already exists" >&2
-            exit 1
-          fi
-          grep -q 'E404' npm-server-view-error.txt
-          if gh release view "v$RELEASE_VERSION" >/dev/null 2>&1; then
-            echo "GitHub release v$RELEASE_VERSION already exists" >&2
-            exit 1
-          fi
-          if git ls-remote --exit-code origin "refs/tags/v$RELEASE_VERSION" >/dev/null 2>&1; then
-            echo "Git tag v$RELEASE_VERSION already exists" >&2
-            exit 1
-          fi
-      - name: Download and verify the candidate build matrix
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
-          EXPECTED_COMMIT: ${{ inputs.commit }}
-        run: |
-          set -euo pipefail
-          gh run download "$CANDIDATE_RUN_ID" --name candidate-darwin-arm64 --dir downloaded/candidate-darwin-arm64
-          gh run download "$CANDIDATE_RUN_ID" --name candidate-win32-x64 --dir downloaded/candidate-win32-x64
-          gh run download "$CANDIDATE_RUN_ID" --name candidate-linux-x64 --dir downloaded/candidate-linux-x64
-          mkdir release-artifacts
-          cp downloaded/candidate-darwin-arm64/* downloaded/candidate-win32-x64/* downloaded/candidate-linux-x64/* release-artifacts/
-          RELEASE_VERSION="${{ inputs.release_version }}" node clients/desktop/scripts/verify-candidate-artifacts.mjs release-artifacts
-      - name: Pack and audit the public npm package
-        run: |
-          set -euo pipefail
-          mkdir npm-package npm-smoke
-          npm pack ./cli --pack-destination npm-package
-          tarball="$(find npm-package -maxdepth 1 -name '*.tgz' -type f)"
-          test -n "$tarball"
-          tarball="$(realpath "$tarball")"
-          npm install --prefix npm-smoke --ignore-scripts "$tarball"
-          test "$(npm-smoke/node_modules/.bin/novaaudio --version)" = "${{ inputs.release_version }}"
-          npm-smoke/node_modules/.bin/novaaudio --help
-      - name: Create GitHub release, publish npm package, and verify propagation
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          EXPECTED_COMMIT: ${{ inputs.commit }}
-          RELEASE_VERSION: ${{ inputs.release_version }}
-        run: |
-          set -euo pipefail
-          gh release create "v$RELEASE_VERSION" release-artifacts/* \
-            --target "$EXPECTED_COMMIT" \
-            --title "Nova Audio Agent v$RELEASE_VERSION" \
-            --notes "Nova Audio Agent v$RELEASE_VERSION makes the first run guided: one DashScope API Key is enough to start, a setup window tests the key before saving, novaaudio doctor --online checks keys against their providers, and search, camera and memory turn off instead of blocking startup when their key is missing. Available for macOS arm64, Windows x64 and Ubuntu 22.04+ x64. Desktop applications are unsigned; macOS Gatekeeper and Windows SmartScreen may display security warnings." \
-            --latest
-          tarball="$(find npm-package -maxdepth 1 -name '*.tgz' -type f)"
-          tarball="$(realpath "$tarball")"
-          npm publish "./release-artifacts/nova-audio-agent-server-$RELEASE_VERSION.tgz" --access public
-          npm publish "$tarball" --access public
-          published=''
-          for attempt in $(seq 1 12); do
-            if test "$(npm view "nova-audio-agent@$RELEASE_VERSION" version 2>/dev/null || true)" = "$RELEASE_VERSION" \
-              && test "$(npm view "nova-audio-agent-server@$RELEASE_VERSION" version 2>/dev/null || true)" = "$RELEASE_VERSION"; then
-              published=1
-              break
-            fi
-            sleep 10
-          done
-          test "$published" = "1"
-          prefix="$(mktemp -d)"
-          npm install --global --prefix "$prefix" "nova-audio-agent@$RELEASE_VERSION" "nova-audio-agent-server@$RELEASE_VERSION"
-          test "$("$prefix/bin/novaaudio" --version)" = "$RELEASE_VERSION"
-          "$prefix/bin/novaaudio" --help
-          "$prefix/bin/novaaudio-server" --help
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: release-${{ inputs.release_version }}-publish-audit
-          path: |
-            candidate-run.json
-          if-no-files-found: warn
-
   npm-platform-acceptance:
-    needs: publish
     strategy:
       fail-fast: false
       matrix:
@@ -157,6 +33,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit }}
+      - name: Verify immutable release tag
+        shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ inputs.commit }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test "$(git ls-remote origin "refs/tags/v$RELEASE_VERSION" | cut -f1)" = "$EXPECTED_COMMIT"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
