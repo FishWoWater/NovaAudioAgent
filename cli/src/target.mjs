@@ -33,7 +33,7 @@ export function resolveTarget(platform = process.platform, arch = process.arch) 
 
 // Release URLs are shared by all supported desktop targets.
 export function releaseBaseUrl(version = PRODUCT_VERSION) {
-  return `https://github.com/${RELEASE_REPOSITORY}/releases/download/${version}`
+  return `https://github.com/${RELEASE_REPOSITORY}/releases/download/v${version}`
 }
 
 export function releaseRoot({
