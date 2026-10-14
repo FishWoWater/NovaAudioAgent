@@ -1,7 +1,8 @@
+/* oxlint-disable jsx-a11y/media-has-caption -- Keep the supplied original demo without added subtitles. */
+import Image from 'next/image';
 import { featureCards } from '../lib/home-features';
-import { YouTubeCard } from './youtube-card';
 import { sitePath } from '../lib/site-path';
-import { ArrowRight, ArrowUpRight, Play } from 'lucide-react';
+import { ArrowRight, ArrowUpRight } from 'lucide-react';
 import { Header, Footer, repo } from './site-header';
 import { InstallCommand } from './install-command';
 import { StarField } from './star-field';
@@ -9,14 +10,43 @@ import { HeroHeaderScope } from './hero-header-scope';
 export function HomePage({ en = false }: { en?: boolean }) {
   const doc = sitePath(en ? '/en/docs' : '/docs');
   const highlights = en ? [
-    ['Real-time conversation', 'Keep talking while tasks run. Clarify a request or change direction whenever you need.'],
-    ['Thoughtfully proactive', 'Nova reports meaningful progress and camera events, while routine updates stay quiet.'],
-    ['Context that stays with you', 'Recall personal memories and your documents. Keep control through explicit approvals.'],
+    ['A persistent home and Timeline', 'Keep Nova beside your tabbed workspace. Revisit context, evidence and task results without leaving the conversation.'],
+    ['Scheduled Agent Tasks', 'Run work once, daily or weekly. Manage schedules on desktop or mobile and receive reports in your main conversation.'],
+    ['Understanding that grows', 'Authorized sources sync incrementally. Resumable processing builds an editable Profile with evidence you can check and withdraw.'],
+    ['Choose your coding agent', 'Codex, OpenCode, CodeBuddy, Pi or DeepSeek Harness: each session keeps its backend, with improved recovery and Windows support.'],
+    ['Control every step', 'Approvals, cancellation and evidence checks connect specialist execution. GUI and phone execution remain experimental.'],
   ] : [
-    ['边聊边做', '后台任务继续，前台对话照常。随时澄清需求、补充要求，或调整方向。'],
-    ['主动有分寸', '重要进展、关注的画面变化，及时提醒；琐碎过程保持安静，不抢你说话。'],
-    ['理解你的上下文', '结合个人记忆与知识库回答问题，需要授权时先确认，决定权始终在你。'],
+    ['持续主会话与 Timeline', 'Nova 陪在标签工作区旁，随时回看上下文、来源证据和任务结果，不必离开对话。'],
+    ['定时 Agent 任务', '支持单次、每日、每周运行，在桌面端或手机端管理，报告回到主会话。'],
+    ['逐步积累对你的理解', '授权来源增量同步，可恢复的处理逐步更新画像；内容可编辑，引用可核对，来源可撤回。'],
+    ['选择你的编码代理', 'Codex、OpenCode、CodeBuddy、Pi 或 DeepSeek Harness，会话保留原后端，恢复流程和 Windows 支持持续完善。'],
+    ['执行有授权，结果有证据', '专长执行共享审批、取消和证据核验。GUI 与手机执行继续作为实验能力提供。'],
   ];
+  const featureGroups = en ? [
+    ['workbench', 'Your personal agent'],
+    ['tasks', 'Your voice assistant'],
+    ['connections', 'Use cases'],
+  ] : [
+    ['workbench', '你的个人 Agent'],
+    ['tasks', '你的语音助手'],
+    ['connections', '使用案例'],
+  ];
+  const cards = featureCards.filter(card => card.lang === (en ? 'en' : 'zh-CN'));
+  const tile = (card: (typeof featureCards)[number]) => (
+    <article className="feature-tile" key={card.image}>
+      <div className="feature-tile-copy"><h3>{card.title}</h3><p>{card.description}</p></div>
+      {card.video ? (
+        <div className="feature-image-stage feature-video-stage">
+          <video controls preload="none" poster={sitePath(card.image)} aria-label={card.alt} width={card.width} height={card.height}>
+            <source src={sitePath(card.video)} type="video/mp4" />
+            <a href={sitePath(card.video)}>{en ? 'Watch the demo' : '播放演示'}</a>
+          </video>
+          <a className="feature-video-link" href={sitePath(card.video)}>{en ? 'Open video' : '打开视频'} <ArrowUpRight size={14} /></a>
+        </div>
+      ) : <a className="feature-image-stage" style={{ aspectRatio: `${card.width} / ${card.height}` }} href={sitePath(card.image)} target="_blank" rel="noreferrer" aria-label={card.alt}><Image src={sitePath(card.image)} alt={card.alt} loading="lazy" width={card.width} height={card.height} /></a>}
+      {card.caption && <p className="feature-caption">{card.caption}</p>}
+    </article>
+  );
   return (
     <>
       <Header en={en} hero />
@@ -26,43 +56,35 @@ export function HomePage({ en = false }: { en?: boolean }) {
           <StarField en={en} />
           <div className="hero-content">
             <p className="hero-kicker">
-              {en ? 'A voice agent by DeepNovaCore' : '深穹星核 · 开源语音助手'}
+              {en ? 'Your Personal Agent and Voice Assistant' : '你的个人 Agent 与语音助手'}
             </p>
             <h1>
-              NovaAudioAgent
+              Nova Personal Agent
             </h1>
             <h2>
               {en ? (
                 <>
-                  Stay in conversation.
+                  Knows your context.
                   <br />
-                  Keep work moving.
+                  Gets things done.
                 </>
               ) : (
-                <>随时交流，专心做事。</>
+                <>懂你的上下文，把事做成。</>
               )}
             </h2>
             <p className="hero-description">
               {en
-                ? 'A voice agent that listens, remembers, and acts. Talk naturally, explore your documents, or ask Nova to watch for changes—and hear back when it matters.'
-                : '能对话、会记忆、也能行动的常驻语音助手。自然交流、查询资料、观察画面，让小诺在值得你关注时主动开口。'}
+                ? 'A persistent conversation, scheduled tasks and source-backed understanding, beside your everyday workspace.'
+                : '持续主会话、定时任务与有出处的理解，陪在日常工作区旁。'}
             </p>
             <div className="hero-actions">
               <a className="button primary" href={doc}>
                 {en ? 'Get started' : '开始使用'} <ArrowUpRight size={15} />
               </a>
-              <a className="button secondary" href="#demo">
-                <Play size={12} />
-                {en ? 'Watch on YouTube' : 'YouTube 演示'}
-              </a>
             </div>
           </div>
           <div className="hero-bottom">
-            <span>
-              {en
-                ? 'Always present. Thoughtfully proactive.'
-                : '常驻在线，主动有分寸。'}
-            </span>
+            <span aria-hidden="true" />
             <a href="#demo" aria-label={en ? 'Explore Nova' : '了解 Nova'}>
               ↓
             </a>
@@ -70,38 +92,31 @@ export function HomePage({ en = false }: { en?: boolean }) {
           </div>
         </section>
         <section className="intro-section reading" id="demo">
-          <p className="section-label">{en ? 'Meet Nova' : '认识小诺'}</p>
+          <p className="section-label">{en ? 'New in v0.4.0' : 'v0.4.0 新功能'}</p>
           <h2>
-            {en ? (
-              <>
-                A little less switching.
-                <br />A little more doing.
-              </>
-            ) : (
-              <>
-                少一点来回切换，
-                <br />
-                多一点专心做事。
-              </>
-            )}
+            {en ? <>Remembers what matters.</> : <>记住重要的事。</>}
           </h2>
           <p className="lead">
             {en
-              ? 'Nova connects real-time voice with background tasks, camera monitoring, personal memory, and document knowledge. Stay in conversation on your desktop or from your iPhone.'
-              : '小诺常驻桌面，把实时语音、后台执行、视觉监控、个人记忆和知识库连在一起，也能通过 iPhone 随身连接。'}
+              ? 'Talk through a goal, organize your todos, ideas and goals on the Workbench, and follow delegated work through to an evidence-backed result. Nova draws on the sources you authorize, keeps memory traceable, and lets you take over whenever you need.'
+              : '一起问清目标，在 Workbench 中整理待办、想法与目标，再跟进任务直到得到有证据的结果。Nova 结合你授权的资料，保留记忆出处；需要时，你随时可以接管。'}
           </p>
         </section>
-        <div className="demo-media wrap"><YouTubeCard en={en} /></div>
-        <section className="home-highlights wrap" aria-label={en ? 'Highlights' : '核心特性'}>
+        <figure className="architecture-overview wrap">
+          <a href={sitePath(`/doc-assets/assets/architecture/nova-personal-agent.${en ? 'en' : 'zh-CN'}.png`)} aria-label={en ? 'View Nova architecture' : '查看 Nova 架构图'}>
+            <Image src={sitePath(`/doc-assets/assets/architecture/nova-personal-agent.${en ? 'en' : 'zh-CN'}.png`)} alt={en ? 'Nova personal agent: app context, conversation, task coordination and specialist execution' : 'Nova 个人 Agent：应用上下文、对话、任务协调与专长执行'} loading="lazy" width={1586} height={992} />
+          </a>
+          <figcaption>{en ? 'Your context informs the conversation. Nova coordinates work, checks results, and speaks when it matters.' : '上下文帮助理解，对话协调执行；结果按证据核对，提醒在合适时机开口。'}</figcaption>
+        </figure>
+        <section className="home-highlights wrap" id="whats-new" aria-label={en ? 'Highlights' : '核心特性'}>
           {highlights.map(([title, body], i) => <article key={title}><span className="section-label">0{i + 1}</span><h2>{title}</h2><p>{body}</p></article>)}
         </section>
         <section className="main-features wrap" id="features">
-          <div className="main-features-heading"><p className="section-label">{en ? 'Main features' : '核心功能'}</p><h2>{en ? 'More ways to work with Nova.' : '从一句话，到更多可能。'}</h2></div>
-          <div className="feature-gallery">{featureCards.filter(card => card.lang === (en ? 'en' : 'zh-CN')).map(card => <article className="feature-tile" key={card.image}>
-            <div className="feature-tile-copy"><h3>{card.title}</h3><p>{card.description}</p></div>
-            <a className="feature-image-stage" href={sitePath(card.image)} target="_blank" rel="noreferrer" aria-label={card.alt}><img src={sitePath(card.image)} alt={card.alt} loading="lazy" width={1280} height={1280} /></a>
-            {card.caption && <p className="feature-caption">{card.caption}</p>}
-          </article>)}</div>
+          <div className="main-features-heading"><p className="section-label">{en ? 'Work with Nova' : '和 Nova 一起做事'}</p><h2>{en ? 'From context to an outcome.' : '从理解上下文，到把事情做好。'}</h2></div>
+          {featureGroups.map(([group, title], i) => <div key={group}>
+            <div className="main-features-heading feature-group-heading" data-index={`0${i + 1}`}><h3>{title}</h3></div>
+            <div className="feature-gallery">{cards.filter(card => card.group === group).map(tile)}</div>
+          </div>)}
         </section>
         <section className="philosophy" id="design">
           <div className="reading">
@@ -109,30 +124,18 @@ export function HomePage({ en = false }: { en?: boolean }) {
               {en ? 'The thinking behind Nova' : '我们的思考'}
             </p>
             <h2>
-              {en ? (
-                <>
-                  Knowing what to say.
-                  <br />
-                  And when to say it.
-                </>
-              ) : (
-                <>
-                  知道怎么回答，
-                  <br />
-                  也知道何时开口。
-                </>
-              )}
+              {en ? <>Helpful, not wordy.</> : <>有用，但不啰嗦。</>}
             </h2>
             <p className="lead">
               {en
-                ? 'An update is only useful if it deserves your attention. Nova treats doing the work and deciding when to speak as separate responsibilities.'
-                : '并非每一条进度，都值得打断你。Nova 将“把事做好”和“何时告知”分开考虑，让任务持续推进，也让你的注意力得到尊重。'}
+                ? 'Nova works from the sources you authorize, shows the evidence behind its results, and speaks up only when it matters. You can take over at any time.'
+                : 'Nova 只基于你授权的资料工作，给出结果背后的证据，只在值得的时候开口。需要时，你随时可以接管。'}
             </p>
             <div className="architecture-strip">
               <div>
                 <small>01</small>
                 <strong>{en ? 'Work progresses' : '任务有了进展'}</strong>
-                <span>Executor / Memory</span>
+                <span>Executor / Runtime blackboard</span>
               </div>
               <span className="flow-arrow">→</span>
               <div>
@@ -140,33 +143,35 @@ export function HomePage({ en = false }: { en?: boolean }) {
                 <strong>
                   {en ? 'Consider the value' : '判断是否值得告知'}
                 </strong>
-                <span>Surrogate</span>
+                <span>Proactive</span>
               </div>
               <span className="flow-arrow">→</span>
               <div>
                 <small>03</small>
                 <strong>{en ? 'Find the moment' : '等待合适的时机'}</strong>
-                <span>Floor / Voice</span>
+                <span>Floor / Conversation</span>
               </div>
             </div>
             <a className="text-link" href={doc + '/architecture/'}>
-              {en ? 'Explore the architecture' : '了解运行时架构'}{' '}
+              {en ? 'Explore the personal agent architecture' : '了解个人 Agent 架构'}{' '}
               <ArrowRight size={14} />
             </a>
           </div>
         </section>
         <section className="start-section reading" id="quickstart">
           <p className="section-label">{en ? 'Get started' : '从这里开始'}</p>
-          <h2>{en ? 'Your next task starts here.' : '下一件事，交给小诺。'}</h2>
+          <h2>{en ? 'Your next task starts here.' : '下一件事，交给 Nova。'}</h2>
           <p className="lead">
             {en
               ? 'Install Nova, configure your API keys, and start a conversation.'
               : '安装 Nova，配置 API Key，就可以开始对话。'}
           </p>
           <InstallCommand en={en} />
+          <p className="requirements">{en ? 'Upgrading from nova-audio-agent? Uninstall the old npm package before switching names; your local data stays in place.' : '从 nova-audio-agent 升级？切换包名前请先卸载旧 npm 包，本地数据保持不变。'}</p>
+          <a className="text-link" href={`${repo}/releases/tag/v0.4.0`}>{en ? 'Read the v0.4.0 release notes and support boundaries' : '查看 v0.4.0 发布说明与支持边界'} <ArrowUpRight size={16} /></a>
           <p className="requirements">
-            Node.js 22+ · npm ·{' '}
-            {en ? 'Codex required for coding tasks' : '编码任务需另行安装并登录 Codex'}
+            Node.js 22.13+ · npm ·{' '}
+            {en ? 'Install your chosen backend for coding tasks' : '编码任务需安装并登录所选后端'}
           </p>
           <div className="resource-links">
             <a href={doc}>

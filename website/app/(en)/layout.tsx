@@ -3,10 +3,9 @@ import type { Metadata } from 'next';
 import { ThemeScript } from '../../components/theme-script';
 import '../globals.css';
 export const metadata: Metadata = {
-  title: 'Nova Audio Agent — Stay in conversation. Keep work moving.',
-  description:
-    'Real-time voice, background tasks, camera monitoring, personal memory, and document knowledge. Nova speaks up when it matters.',
-  icons: { icon: sitePath('/favicon.svg') },
+  title: 'Nova Personal Agent — Your Personal Agent and Voice Assistant',
+  description: 'Your personal agent and voice assistant: todos, ideas and goals on one workbench, memory you can trace, and tasks checked against evidence.',
+  icons: { icon: { url: sitePath('/brand/deepnovacore-mark.png'), type: 'image/png' }, apple: sitePath('/brand/deepnovacore-mark.png') },
   alternates: { languages: { en: sitePath('/'), 'zh-CN': sitePath('/zh'), 'x-default': sitePath('/') } },
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
